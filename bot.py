@@ -314,10 +314,8 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
     if not synced:
-        guild = discord.Object(id=1335491664642310156)
-        bot.tree.copy_global_to(guild=guild)
-        await bot.tree.sync(guild=guild)
-        print("Slash commands synced")
+        await bot.tree.sync()
+        print("Global slash commands synced")
         synced = True
 
 async def main():
