@@ -13,10 +13,10 @@ from discord.ext import commands
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 # 本番用：30分
-CHECK_INTERVAL_SECONDS = 30 * 60
+# CHECK_INTERVAL_SECONDS = 30 * 60
 
 # テストしたい場合は、上をコメントアウトして下を使ってください
-# CHECK_INTERVAL_SECONDS = 30
+CHECK_INTERVAL_SECONDS = 30
 
 logging.basicConfig(level=logging.INFO)
 
