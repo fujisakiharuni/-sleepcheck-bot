@@ -48,6 +48,87 @@ class SleepCheckSession:
             self.task.cancel()
 
 
+class DisconnectUserSelect(discord.ui.UserSelect):
+    def __init__(self, session):
+        super().__init__(
+            placeholder="切断するユーザーを選択してください",
+            min_values=1,
+            max_values=1
+        )
+        self.session = session
+
+    async def callback(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "サーバー内でのみ使用できます。",
+                ephemeral=True
+            )
+            return
+
+        executor = interaction.user
+
+        if not isinstance(executor, discord.Member):
+            await interaction.response.send_message(
+                "実行者のメンバー情報を取得できませんでした。",
+                ephemeral=True
+            )
+            return
+
+        if not executor.guild_permissions.move_members:
+            await interaction.response.send_message(
+                "この操作には `メンバーを移動 / Move Members` 権限が必要です。",
+                ephemeral=True
+            )
+            return
+
+        selected_user = self.values[0]
+
+        if not isinstance(selected_user, discord.Member):
+            await interaction.response.send_message(
+                "選択したユーザーのメンバー情報を取得できませんでした。",
+                ephemeral=True
+            )
+            return
+
+        current_member_ids = {m.id for m in self.session.human_members()}
+
+        if selected_user.id not in current_member_ids:
+            await interaction.response.send_message(
+                "そのユーザーは対象VCに参加していません。",
+                ephemeral=True
+            )
+            return
+
+        try:
+            await selected_user.move_to(
+                None,
+                reason=f"Disconnected manually by {executor}"
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "そのユーザーを切断できませんでした。Botの権限またはロール位置を確認してください。",
+                ephemeral=True
+            )
+            return
+        except discord.HTTPException:
+            await interaction.response.send_message(
+                "切断処理中にエラーが発生しました。",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            f"{selected_user.display_name} をVCから切断しました。",
+            ephemeral=True
+        )
+
+
+class DisconnectUserView(discord.ui.View):
+    def __init__(self, session):
+        super().__init__(timeout=60)
+        self.add_item(DisconnectUserSelect(session))
+
+
 class SleepCheckView(discord.ui.View):
     def __init__(self, session):
         super().__init__(timeout=CHECK_INTERVAL_SECONDS)
@@ -83,6 +164,51 @@ class SleepCheckView(discord.ui.View):
 
         await interaction.response.send_message(
             "確認しました。この30分枠は継続条件を満たしました。",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="ユーザーを指定して切断", style=discord.ButtonStyle.danger)
+    async def disconnect_user_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "サーバー内でのみ使用できます。",
+                ephemeral=True
+            )
+            return
+
+        if not self.session.active:
+            await interaction.response.send_message(
+                "この寝落ちチェックはすでに終了しています。",
+                ephemeral=True
+            )
+            return
+
+        executor = interaction.user
+
+        if not isinstance(executor, discord.Member):
+            await interaction.response.send_message(
+                "実行者のメンバー情報を取得できませんでした。",
+                ephemeral=True
+            )
+            return
+
+        if not executor.guild_permissions.move_members:
+            await interaction.response.send_message(
+                "この操作には `メンバーを移動 / Move Members` 権限が必要です。",
+                ephemeral=True
+            )
+            return
+
+        if not self.session.human_members():
+            await interaction.response.send_message(
+                "対象VCにメンバーがいません。",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "切断するユーザーを選択してください。",
+            view=DisconnectUserView(self.session),
             ephemeral=True
         )
 
@@ -132,7 +258,8 @@ async def sleepcheck_loop(session):
                 f"{mentions}\n\n"
                 f"{CHECK_INTERVAL_SECONDS // 60}分以内に、誰か1人でも"
                 f"「起きてる」ボタンを押してください。\n"
-                f"誰も押さなかった場合、対象VC内の全員を切断します。",
+                f"誰も押さなかった場合、対象VC内の全員を切断します。\n\n"
+                f"必要な場合は「ユーザーを指定して切断」から個別に切断できます。",
                 view=view
             )
 
@@ -318,6 +445,7 @@ async def on_ready():
         print("Global slash commands synced")
         synced = True
 
+
 async def main():
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN が設定されていません")
@@ -326,6 +454,7 @@ async def main():
 
     async with bot:
         await bot.start(TOKEN)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
